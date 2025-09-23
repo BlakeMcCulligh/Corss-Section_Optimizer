@@ -68,11 +68,7 @@ def TrussAnalysis(A):
     freeDOF = DOFCON.flatten().nonzero()[0]
     supportDOF = (DOFCON.flatten() == 0).nonzero()[0]
     Kff = K[np.ix_(freeDOF, freeDOF)]
-    #Kfr = K[np.ix_(freeDOF, supportDOF)]
-    #Krf = Kfr.T
-    #Krr = K[np.ix_(supportDOF, supportDOF)]
     Pf = P.flatten()[freeDOF]
-
 
     Uf = np.linalg.solve(Kff, Pf)
     U = DOFCON.astype(float).flatten()
@@ -83,110 +79,149 @@ def TrussAnalysis(A):
     N = E * A[:] / L[:] * (a[:] * u[:]).sum(axis=1)
     S = N/A
     Mass = (p*A*L).sum()
-    #R = (Krf[:]*Uf).sum(axis=1) + (Krr[:] * Ur).sum(axis=1)
-    #R = R.reshape(2, DOF)
     return S, Mass, U
 
-
-
-
+""" ---------- Partical Swarm Optimization ---------- """
 
 #Parameteer setting
-d = 10
-xMin, xMax = 0.1, 40  # min and max cross-section arrea
-vMin, vMax = -0.2*(xMax-xMin), 0.2*(xMax-xMin)
-MaxIt = 500
-ps = 30
-c1 = 2
-c2 = 2
-w = 0.9 - ((0.9-0.4)/MaxIt)*np.linspace(0,MaxIt,MaxIt)
+NumMembers = 10 # number of member corss-sections
+AMin, AMax = 0.1, 40  # min and max cross-section arrea
+changeAMin, changeAMax = -0.2 * (AMax - AMin), 0.2 * (AMax - AMin) # min and max change of cross-section area
+MaxIt = 500 # Number of intervals
+ps = 30 # size of each interval
 
-def limitV(V):
-    for i in range(len(V)):
-        if V[i] > vMax:
-            V[i] = vMax
-        if V[i] < vMin:
-            V[i] = vMin
-    return V
+c1, c2 = 2, 2 # multiplying constancts
+w = 0.9 - ((0.9-0.4)/MaxIt)*np.linspace(0,MaxIt,MaxIt) # mumultiplying constancts
 
-def limitX(X):
-    for i in range(len(X)):
-        if X[i] > xMax:
-            X[i] = xMax
-        if X[i] < xMin:
-            X[i] = xMin
-    return X
+def limitChangeA(ChangeA):
+    """
+    Keeps the change in area within the limits
+
+    :param ChangeA: The change in area to be checked
+    :return: The limited change in area
+    """
+    for i in range(len(ChangeA)):
+        if ChangeA[i] > changeAMax:
+            ChangeA[i] = changeAMax
+        if ChangeA[i] < changeAMin:
+            ChangeA[i] = changeAMin
+    return ChangeA
+
+def limitA(A):
+    """
+    Keeps the cross-section area within the limits
+
+    :param A: The cross-section area to be checked
+    :return: The limited cross-section area
+    """
+    for i in range(len(A)):
+        if A[i] > AMax:
+            A[i] = AMax
+        if A[i] < AMin:
+            A[i] = AMin
+    return A
+
+def calcCost(weight, deflection, stress):
+    """
+    Calculates the cost of the truss corss-sections
+
+    :param weight: Total weight of the truss
+    :param deflection: deflections of all the nodes of the truss
+    :param stress: stresses in all the members of the truss
+    :return: cost of the truss
+    """
+
+    # adding cost if a member is exceding the stree limit
+    C_total = 0
+    for cd in range(NumMembers):
+        if np.abs(stress[cd]) > s_lim:
+            C1 = np.abs((stress[cd] - s_lim) / s_lim)
+        else:
+            C1 = 0
+        C_total = C_total + C1
+
+    # finding the maximum vertical deflection
+    maxDif = 0
+    for i in range(len(nodes)):
+        if np.abs(deflection[i, 1]) > maxDif:
+            maxDif = np.abs(deflection[i, 1])
+
+    # calculating cost
+    Cs = weight ** 1.8 * 75 + 0.95 * maxDif * 4000000
+
+    return Cs * (1+ C_total)
 
 #%% Algorithm
 def Optimization():
-    class Particle():
+    class ParticleSwarmOptimize:
         def __init__(self):
-            self.position = np.random.uniform((xMax-xMin)*0.5,xMax,[ps,d])
-            self.velocity = np.random.uniform(vMin,vMax,[ps,d])
+            """
+            Initiate Optimizer
+            """
+
+            self.Area = np.random.uniform((AMax - AMin) * 0.5, AMax, [ps, NumMembers])
+            self.ChangeInArea = np.random.uniform(changeAMin, changeAMax, [ps, NumMembers])
+
             self.cost = np.zeros(ps)
 
-            self.stress = np.zeros([ps,d])
+            self.stress = np.zeros([ps, NumMembers])
+            self.weight = np.zeros([ps, NumMembers])
             self.disp = np.zeros([ps,len(nodes),2])
+
             for i in range(ps):
-                self.stress[i], self.cost[i], self.disp[i] = TrussAnalysis(self.position[i])
-            self.pbest = np.copy(self.position)
-            self.pbest_cost = np.copy(self.cost)
-            self.index = np.argmin(self.pbest_cost)
-            self.gbest = self.pbest[self.index]
-            self.gbest_cost = self.pbest_cost[self.index]
+                self.stress[i], self.weight[i], self.disp[i] = TrussAnalysis(self.Area[i])
+                self.cost[i] = calcCost(self.weight[i][0], self.disp[i], self.stress[i])
+
+            self.pBestAreas = np.copy(self.Area)
+            self.pBestCost = np.copy(self.cost)
+
+            self.index = np.argmin(self.pBestCost)
+            self.gBestAreas = self.pBestAreas[self.index]
+            self.gBestCost = self.pBestCost[self.index]
+
+            self.BestAreas = np.zeros([MaxIt, NumMembers])
             self.BestCost = np.zeros(MaxIt)
-            self.BestPosition = np.zeros([MaxIt,d])
+
 
         def Evaluate(self):
+            """
+            Optimizes the given truss
+
+            :return:
+            """
+
             for it in range(MaxIt):
                 for i in range(ps):
-                    self.velocity[i] = ((w[it]*self.velocity[i])
-                                        + c1*np.random.rand(d)*(self.pbest[i] - self.position[i])
-                                        + c2*np.random.rand(d)*(self.gbest - self.position[i]))
-                    self.velocity[i] = limitV(self.velocity[i])
-                    self.position[i] = self.position[i] + self.velocity[i]
-                    self.position[i] = limitX(self.position[i])
-                    self.stress[i], self.cost[i], self.disp[i] = TrussAnalysis(self.position[i])
 
-                    C_total = 0
-                    for cd in range(d):
-                        if np.abs(self.stress[i,cd]) > s_lim:
-                            C1 = np.abs((self.stress[i,cd] - s_lim)/s_lim)
-                        else:
-                            C1 = 0
-                        C_total = C_total + C1
+                    # changing cross-section areas
+                    self.ChangeInArea[i] = ((w[it] * self.ChangeInArea[i])
+                                            + c1 * np.random.rand(NumMembers) * (self.pBestAreas[i] - self.Area[i])
+                                            + c2 * np.random.rand(NumMembers) * (self.gBestAreas - self.Area[i]))
+                    self.ChangeInArea[i] = limitChangeA(self.ChangeInArea[i])
+                    self.Area[i] += self.ChangeInArea[i]
+                    self.Area[i] = limitA(self.Area[i])
 
-                    for cx in range(len(nodes)):
-                        if np.abs(self.disp[i,cx,0]) > d_lim:
-                            C2 = np.abs((self.disp[i,cx,0] - d_lim)/d_lim)
-                        else:
-                            C2 = 0
-                        C_total = C_total + C2
-                    for cy in range(len(nodes)):
-                        if np.abs(self.disp[i,cy,1]) > d_lim:
-                            C3 = np.abs((self.disp[i,cy,1] - d_lim)/d_lim)
-                        else:
-                            C3 = 0
-                        C_total = C_total + C3
+                    # geting the cost of the truss
+                    self.stress[i], self.weight[i], self.disp[i] = TrussAnalysis(self.Area[i])
+                    self.cost[i] = calcCost(self.weight[i][0], self.disp[i], self.stress[i])
 
-                    phi = (1 + C_total)
-                    self.cost[i] = self.cost[i]*phi
+                    # updating best costs
+                    if self.cost[i] < self.pBestCost[i]:
+                        self.pBestAreas[i] = self.Area[i]
+                        self.pBestCost[i] = self.cost[i]
+                        if self.pBestCost[i] < self.gBestCost:
+                            self.gBestAreas = self.pBestAreas[i]
+                            self.gBestCost = self.pBestCost[i]
 
-
-                    if self.cost[i] < self.pbest_cost[i]:
-                        self.pbest[i] = self.position[i]
-                        self.pbest_cost[i] = self.cost[i]
-                        if self.pbest_cost[i] < self.gbest_cost:
-                            self.gbest = self.pbest[i]
-                            self.gbest_cost = self.pbest_cost[i]
-                self.BestCost[it] = self.gbest_cost
-                self.BestPosition[it] = self.gbest
+                # Saving the best costs and areas for each interval
+                self.BestCost[it] = self.gBestCost
+                self.BestAreas[it] = self.gBestAreas
 
         def Plot(self):
             plt.plot(self.BestCost)
             print("Design Variables A[in2]")
-            print(self.BestPosition[-1][np.newaxis].T)
-            Stress, cost, Disp = TrussAnalysis(self.BestPosition[-1])
+            print(self.BestAreas[-1][np.newaxis].T)
+            Stress, cost, Disp = TrussAnalysis(self.BestAreas[-1])
             print("stress [ksi]")
             print(Stress[np.newaxis].T)
             print("Displacement [in]")
@@ -195,10 +230,11 @@ def Optimization():
             #plt.xlim([0, 3000])
             #plt.ylabel("besy Function Value")
             #plt.xlabel("Number of Iterations")
-            #plt.title("Particle Swarm Optimization of sphere Function")
-            print("Best Fitness Value =", self.gbest_cost)
+            #plt.title("ParticleSwarmOptimize Swarm Optimization of sphere Function")
+            print("Best Fitness Value =", self.gBestCost)
             plt.show()
-    a = Particle()
+
+    a = ParticleSwarmOptimize()
     a.Evaluate()
     a.Plot()
 

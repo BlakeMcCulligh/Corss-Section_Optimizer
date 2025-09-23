@@ -50,7 +50,6 @@ DOFCON = np.ones_like(nodes).astype(int)
 DOFCON[0, :] = 0
 DOFCON[4, :] = 0
 
-
 # %% Truss structural analysis
 def TrussAnalysis():
     NN = len(nodes)
@@ -79,7 +78,7 @@ def TrussAnalysis():
     Krr = K[np.ix_(supportDOF, supportDOF)]
     Pf = P.flatten()[freeDOF]
 
-
+    print(K)
     Uf = np.linalg.solve(Kff, Pf)
     U = DOFCON.astype(float).flatten()
     U[freeDOF] = Uf
@@ -90,7 +89,6 @@ def TrussAnalysis():
     R = (Krf[:]*Uf).sum(axis=1) + (Krr[:] * Ur).sum(axis=1)
     R = R.reshape(2, DOF)
     return np.array(N), np.array(R), U
-
 
 def Plot(nodes, c, lt, lw, lg):
     for i in range(len(bars)):
