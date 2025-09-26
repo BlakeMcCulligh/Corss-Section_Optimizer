@@ -1,4 +1,6 @@
 import numpy as np
+from matplotlib import pyplot as plt
+
 
 class Truss:
     def __init__(self):
@@ -104,3 +106,17 @@ class Truss:
         S = N / A
         Mass = (self.p * A * L).sum()
         return S, Mass, U
+
+    def Plot(self, nodes, c, lt, lw, lg):
+        for i in range(len(self.bars)):
+            xi, xf, = nodes[self.bars[i, 0], 0], nodes[self.bars[i, 1], 0]
+            yi, yf, = nodes[self.bars[i, 0], 1], nodes[self.bars[i, 1], 1]
+            line, = plt.plot([xi, xf], [yi, yf], color=c, linestyle=lt, linewidth=lw)
+        line.set_label(lg)
+        plt.legend()
+
+    def Draw(self, Deformation, Scale):
+        self.Plot(self.nodes, 'gray', '--', 1, 'Undeformed')
+        Dnodes = Deformation * Scale + self.nodes
+        self.Plot(Dnodes, 'red', '-', 2, 'Deformed')
+        plt.show()
