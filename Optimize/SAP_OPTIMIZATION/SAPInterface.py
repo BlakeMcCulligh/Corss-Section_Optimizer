@@ -2,6 +2,10 @@ import comtypes.client
 #from comtypes.gen import SAP2000v1
 
 def openSAP():
+    """
+    Opens SAP2000
+    :return: The open program sap object
+    """
     helper = comtypes.client.CreateObject("SAP2000v1.Helper")
     helper = helper.QueryInterface(comtypes.gen.SAP2000v1.cHelper)
     sap_object = helper.GetObject("CSI.SAP2000.API.SapObject")
@@ -13,8 +17,11 @@ def openSAP():
 
 def createSAPFile(sap_object):
     """
+    creates a SAP file in the current open program
+    creates the material properties
 
-    :rtype: object
+    :param sap_object: the open program SAP object
+    :return: the SAP model
     """
     SapModel = sap_object.SapModel
 
@@ -35,4 +42,9 @@ def createSAPFile(sap_object):
     return SapModel
 
 def inportCrossSections(SapModel):
+    """
+    adds all the cross-sections to the SAP model
+
+    :param SapModel: the SAP model
+    """
     ret = SapModel.PropFrame.SetRectangle("R1", "Steel", 10, 5)
