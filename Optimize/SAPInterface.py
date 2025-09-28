@@ -1,7 +1,6 @@
 import comtypes.client
 #from comtypes.gen import SAP2000v1
 
-
 def openSAP():
     helper = comtypes.client.CreateObject("SAP2000v1.Helper")
     helper = helper.QueryInterface(comtypes.gen.SAP2000v1.cHelper)
@@ -34,7 +33,6 @@ def createSAPFile(sap_object):
     inportCrossSections(SapModel)
 
     return SapModel
-
 
 def inportCrossSections(SapModel):
     ret = SapModel.PropFrame.SetRectangle("R1", "Steel", 10, 5)
